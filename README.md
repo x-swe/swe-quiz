@@ -2,6 +2,15 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Create .env.local:
+
+Add these environment variables:
+
+```
+NEXT_PUBLIC_VAPI_PUBLIC_KEY=<pub_key_from_vapi_ai_website>
+NEXT_PUBLIC_ASSISTANT_ID=<create_an_assistant_and_place_the_id_here>
+```
+
 First, run the development server:
 
 ```bash
