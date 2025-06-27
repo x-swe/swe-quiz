@@ -1,103 +1,154 @@
-import Image from "next/image";
+"use client";
+import { useState, useEffect } from "react";
+import Vapi from "@vapi-ai/web";
+import confetti from "canvas-confetti";
+import QuizButton from "../components/QuizButton";
+import TranscriptOverlay from "../components/TranscriptOverlay";
+import { quizQuestions } from "../lib/quizQuestions";
+
+const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY);
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [isCallActive, setIsCallActive] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [volumeLevel, setVolumeLevel] = useState(0);
+  const [transcript, setTranscript] = useState([]);
+  const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [gameState, setGameState] = useState("idle"); // idle, playing, won, lost
+  const [difficulty, setDifficulty] = useState("all");
+  const [questionIndex, setQuestionIndex] = useState(0);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+  // Helper function to select a random subset of questions
+  const getRandomQuestions = (questions, count) => {
+    const shuffled = [...questions].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, count);
+  };
+
+  useEffect(() => {
+    vapi.on("speech-start", () => setIsSpeaking(true));
+    vapi.on("speech-end", () => setIsSpeaking(false));
+    vapi.on("volume-level", (volume) => setVolumeLevel(volume));
+    vapi.on("message", (message) => {
+      if (message.type === "transcript" && message.transcriptType === "final") {
+        setTranscript((prev) => [
+          ...prev,
+          { role: message.role, text: message.transcript },
+        ]);
+      }
+      if (
+        message.type === "tool-call" &&
+        message.toolCall.functionName === "update_score"
+      ) {
+        const { isCorrect, totalQuestionsAsked } = JSON.parse(
+          message.toolCall.arguments,
+        );
+        if (isCorrect) {
+          setScore((prev) => prev + 1);
+          setStreak((prev) => prev + 1);
+          if (streak + 1 >= 10) {
+            setGameState("won");
+            vapi.stop();
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+          }
+        } else {
+          setStreak(0);
+        }
+        setQuestionIndex(totalQuestionsAsked);
+        if (totalQuestionsAsked >= 10 && streak < 10) {
+          setGameState("lost");
+          vapi.stop();
+        }
+      }
+    });
+    vapi.on("call-end", () => {
+      setIsCallActive(false);
+      setIsSpeaking(false);
+    });
+    vapi.on("error", (e) => {
+      console.error("Vapi error:", {
+        message: e.message,
+        status: e.status,
+        response: e.response?.data,
+        stack: e.stack,
+      });
+      setIsCallActive(false);
+      setGameState("idle");
+    });
+
+    return () => vapi.removeAllListeners();
+  }, [streak]);
+
+  const startQuiz = async () => {
+    if (gameState === "won" || gameState === "lost") {
+      // Reset game
+      setScore(0);
+      setStreak(0);
+      setQuestionIndex(0);
+      setTranscript([]);
+      setGameState("playing");
+    }
+    try {
+      // Filter questions by difficulty
+      const filteredQuestions =
+        difficulty === "all"
+          ? quizQuestions
+          : quizQuestions.filter((q) => q.difficulty === difficulty);
+      // Select only 10 random questions to reduce payload size
+      const selectedQuestions = getRandomQuestions(filteredQuestions, 10);
+      console.log("Sending questions:", selectedQuestions); // Debug payload
+      await vapi.start(process.env.NEXT_PUBLIC_ASSISTANT_ID, {
+        variableValues: {
+          questions: selectedQuestions,
+          currentQuestionIndex: questionIndex,
+        },
+      });
+      setIsCallActive(true);
+      setGameState("playing");
+    } catch (error) {
+      console.error("Failed to start quiz:", {
+        message: error.message,
+        status: error.status,
+        response: error.response?.data,
+        stack: error.stack,
+      });
+      setIsCallActive(false);
+      setGameState("idle");
+    }
+  };
+
+  const stopQuiz = () => {
+    vapi.stop();
+    setIsCallActive(false);
+    setGameState("idle");
+  };
+
+  return (
+    <div className="relative flex flex-col items-center justify-center min-h-screen">
+      <h1 className="text-4xl font-bold mb-12 text-white">
+        Software Engineering Quiz
+      </h1>
+      {gameState !== "playing" && (
+        <select
+          className="mb-8 p-2 rounded bg-gray-800 text-white"
+          value={difficulty}
+          onChange={(e) => setDifficulty(e.target.value)}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <option value="all">All Levels</option>
+          <option value="beginner">Beginner</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced</option>
+        </select>
+      )}
+      <QuizButton
+        isCallActive={isCallActive}
+        isSpeaking={isSpeaking}
+        volumeLevel={volumeLevel}
+        startQuiz={startQuiz}
+        stopQuiz={stopQuiz}
+        gameState={gameState}
+      />
+      <TranscriptOverlay score={score} streak={streak} gameState={gameState} />
     </div>
   );
 }
