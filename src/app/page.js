@@ -18,12 +18,32 @@ export default function Home() {
   const [gameState, setGameState] = useState("idle"); // idle, playing, won, lost
   const [difficulty, setDifficulty] = useState("all");
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [shuffledQuestions, setShuffledQuestions] = useState([]);
 
-  // Helper function to select a random subset of questions
-  const getRandomQuestions = (questions, count) => {
-    const shuffled = [...questions].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, count);
+  // Helper function to shuffle questions using Fisher-Yates algorithm
+  const shuffleQuestions = (questions) => {
+    const shuffled = [...questions];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
   };
+
+  // Initialize shuffled questions on mount and when difficulty changes
+  useEffect(() => {
+    const filteredQuestions =
+      difficulty === "all"
+        ? quizQuestions
+        : quizQuestions.filter((q) => q.difficulty === difficulty);
+    const shuffled = shuffleQuestions(filteredQuestions);
+    const selected = shuffled.slice(0, 10);
+    setShuffledQuestions(selected);
+    // console.log(
+    //   "Initialized questions:",
+    //   selected.map((q) => q.question),
+    // );
+  }, [difficulty]);
 
   useEffect(() => {
     vapi.on("speech-start", () => setIsSpeaking(true));
@@ -43,6 +63,7 @@ export default function Home() {
         const { isCorrect, totalQuestionsAsked } = JSON.parse(
           message.toolCall.arguments,
         );
+        // console.log("Tool call received:", { isCorrect, totalQuestionsAsked });
         if (isCorrect) {
           setScore((prev) => prev + 1);
           setStreak((prev) => prev + 1);
@@ -87,20 +108,29 @@ export default function Home() {
       setQuestionIndex(0);
       setTranscript([]);
       setGameState("playing");
-    }
-    try {
-      // Filter questions by difficulty
+      // Reshuffle questions
       const filteredQuestions =
         difficulty === "all"
           ? quizQuestions
           : quizQuestions.filter((q) => q.difficulty === difficulty);
-      // Select only 10 random questions to reduce payload size
-      const selectedQuestions = getRandomQuestions(filteredQuestions, 10);
-      console.log("Sending questions:", selectedQuestions); // Debug payload
+      const shuffled = shuffleQuestions(filteredQuestions);
+      const selected = shuffled.slice(0, 10);
+      setShuffledQuestions(selected);
+      // console.log(
+      // "Reset questions:",
+      // selected.map((q) => q.question),
+      // );
+    }
+    try {
+      // console.log("Sending to Vapi:", {
+      //   questions: shuffledQuestions.map((q) => q.question),
+      //   currentQuestionIndex: questionIndex,
+      // });
       await vapi.start(process.env.NEXT_PUBLIC_ASSISTANT_ID, {
         variableValues: {
-          questions: selectedQuestions,
+          questions: shuffledQuestions,
           currentQuestionIndex: questionIndex,
+          difficulty,
         },
       });
       setIsCallActive(true);
