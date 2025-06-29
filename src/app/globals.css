@@ -1,8 +1,9 @@
 @import "tailwindcss";
+@import "@fontsource/jetbrains-mono";
 
 :root {
-    --background: #ffffff;
-    --foreground: #171717;
+    --background: #000000;
+    --foreground: #ffffff;
 }
 
 @theme inline {
@@ -14,16 +15,26 @@
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --background: #0a0a0a;
-        --foreground: #ededed;
+        --background: #000000;
+        --foreground: #ffffff;
     }
 }
 
 body {
-    background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1f 100%);
+    background: #000000;
     color: #e0e0e0;
     min-height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
+    margin: 0;
+    overflow: hidden;
+    font-family: "JetBrains Mono", monospace;
+}
+
+h1,
+h2,
+h3 {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
 }

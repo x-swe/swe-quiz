@@ -1,4 +1,5 @@
 import "./globals.css";
+import StarsCanvas from "../components/StarsCanvas";
 
 export const metadata = {
   title: "Software Engineering Quiz",
@@ -8,7 +9,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <StarsCanvas />
+        <div className="relative z-10">{children}</div>
+      </body>
     </html>
   );
 }

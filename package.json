@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.6",
     "@vapi-ai/web": "^2.3.8",
     "canvas-confetti": "^1.9.3",
     "next": "15.3.4",
