@@ -10,8 +10,11 @@ export default function TranscriptOverlay({ score, streak, gameState }) {
       <p
         style={{ fontStyle: "italic", fontSize: "0.9rem", marginTop: "0.5rem" }}
       >
-        Beginner questions: 10 points, Intermediate: 20 points, Advanced: 30
-        points
+        This might have some bugs. Please help me fix them on the GitHub
+        repository:{" "}
+        <a href="https://github.com/x-swe/swe-quiz">
+          https://github.com/x-swe/swe-quiz
+        </a>
       </p>
     </div>
   );

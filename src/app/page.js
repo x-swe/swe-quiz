@@ -20,6 +20,8 @@ export default function Home() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [totalQuestionsAsked, setTotalQuestionsAsked] = useState(0);
   const [shuffledQuestions, setShuffledQuestions] = useState([]);
+  const [lastProcessedQuestionIndex, setLastProcessedQuestionIndex] =
+    useState(-1); // Track last processed question index
 
   // Helper function to shuffle questions using Fisher-Yates algorithm
   const shuffleQuestions = (questions) => {
@@ -41,6 +43,7 @@ export default function Home() {
     const selected = shuffled.slice(0, 10);
     setShuffledQuestions(selected);
     setQuestionIndex(0); // Reset questionIndex when difficulty changes
+    setLastProcessedQuestionIndex(-1); // Reset last processed question index
   }, [difficulty]);
 
   useEffect(() => {
@@ -65,51 +68,52 @@ export default function Home() {
       ) {
         const transcriptText = message.transcript.toLowerCase();
 
-        if (transcriptText.includes("correct for a")) {
-          let points = 0;
-          if (transcriptText.includes("beginner question")) {
-            points = 10;
-          } else if (transcriptText.includes("intermediate question")) {
-            points = 20;
-          } else if (transcriptText.includes("advanced question")) {
-            points = 30;
+        // Only process "correct" or "incorrect" if the question index hasn't been processed yet
+        if (
+          (transcriptText.includes("correct for a") ||
+            transcriptText.includes("incorrect for a")) &&
+          questionIndex > lastProcessedQuestionIndex
+        ) {
+          if (transcriptText.includes("correct for a")) {
+            const newStreak = streak + 1; // Calculate new streak first
+            setStreak(newStreak);
+            setScore(newStreak * 10); // Set score to streak * 10
+            setTotalQuestionsAsked((prev) => prev + 1);
+            setQuestionIndex((prev) => prev + 1);
+            setLastProcessedQuestionIndex(questionIndex); // Mark this question as processed
+
+            setGameState((prevState) => {
+              const newTotalQuestionsAsked = totalQuestionsAsked + 1;
+              if (newStreak >= 10 && prevState !== "won") {
+                vapi.stop();
+                confetti({
+                  particleCount: 100,
+                  spread: 70,
+                  origin: { y: 0.6 },
+                });
+                return "won";
+              }
+              if (newTotalQuestionsAsked >= 10 && prevState !== "won") {
+                vapi.stop();
+                return "lost";
+              }
+              return prevState;
+            });
+          } else if (transcriptText.includes("incorrect for a")) {
+            setStreak(0); // Only reset streak, no score change
+            setTotalQuestionsAsked((prev) => prev + 1);
+            setQuestionIndex((prev) => prev + 1);
+            setLastProcessedQuestionIndex(questionIndex); // Mark this question as processed
+
+            setGameState((prevState) => {
+              const newTotalQuestionsAsked = totalQuestionsAsked + 1;
+              if (newTotalQuestionsAsked >= 10 && prevState !== "won") {
+                vapi.stop();
+                return "lost";
+              }
+              return prevState;
+            });
           }
-
-          const newScore = score + points;
-          const newStreak = streak + 1;
-          const updatedTotalQuestionsAsked = totalQuestionsAsked + 1;
-
-          setScore(newScore);
-          setStreak(newStreak);
-          setTotalQuestionsAsked(updatedTotalQuestionsAsked);
-          setQuestionIndex((prev) => prev + 1);
-
-          setGameState((prevState) => {
-            if (newStreak >= 10 && prevState !== "won") {
-              vapi.stop();
-              confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-              return "won";
-            }
-            if (updatedTotalQuestionsAsked >= 10 && prevState !== "won") {
-              vapi.stop();
-              return "lost";
-            }
-            return prevState;
-          });
-        } else if (transcriptText.includes("incorrect for a")) {
-          const updatedTotalQuestionsAsked = totalQuestionsAsked + 1;
-
-          setStreak(0);
-          setTotalQuestionsAsked(updatedTotalQuestionsAsked);
-          setQuestionIndex((prev) => prev + 1);
-
-          setGameState((prevState) => {
-            if (updatedTotalQuestionsAsked >= 10 && prevState !== "won") {
-              vapi.stop();
-              return "lost";
-            }
-            return prevState;
-          });
         }
         // Fallback for unexpected feedback: do nothing to prevent score changes
       }
@@ -124,7 +128,13 @@ export default function Home() {
     });
 
     return () => vapi.removeAllListeners();
-  }, [score, streak, totalQuestionsAsked, questionIndex, shuffledQuestions]);
+  }, [
+    streak,
+    totalQuestionsAsked,
+    questionIndex,
+    shuffledQuestions,
+    lastProcessedQuestionIndex,
+  ]);
 
   const startQuiz = async () => {
     if (gameState === "won" || gameState === "lost") {
@@ -135,6 +145,7 @@ export default function Home() {
       setTotalQuestionsAsked(0);
       setTranscript([]);
       setGameState("playing");
+      setLastProcessedQuestionIndex(-1); // Reset last processed question index
       // Reshuffle questions
       const filteredQuestions =
         difficulty === "all"
