@@ -39,10 +39,10 @@ export default function Home() {
     const shuffled = shuffleQuestions(filteredQuestions);
     const selected = shuffled.slice(0, 10);
     setShuffledQuestions(selected);
-    // console.log(
-    //   "Initialized questions:",
-    //   selected.map((q) => q.question),
-    // );
+    console.log(
+      "Initialized questions:",
+      selected.map((q) => q.question),
+    );
   }, [difficulty]);
 
   useEffect(() => {
@@ -63,26 +63,29 @@ export default function Home() {
         const { isCorrect, totalQuestionsAsked } = JSON.parse(
           message.toolCall.arguments,
         );
-        // console.log("Tool call received:", { isCorrect, totalQuestionsAsked });
+        console.log("Tool call received:", { isCorrect, totalQuestionsAsked });
 
-        // Fixed scoring logic
+        // Update score
         setScore((prev) => {
           const newScore = isCorrect ? prev + 1 : prev;
-          console.log("New score:", newScore); // Log after update
+          console.log("New score:", newScore);
           return newScore;
         });
-        setStreak((prev) => (isCorrect ? prev + 1 : 0));
-        setStreak((prev) => (isCorrect ? prev + 1 : 0));
 
-        // Use functional update to check new streak and game state
+        // Update streak
+        setStreak((prev) => {
+          const newStreak = isCorrect ? prev + 1 : 0;
+          console.log("New streak:", newStreak);
+          return newStreak;
+        });
+
+        // Update game state using functional updates to ensure latest streak
         setGameState((prevState) => {
-          if (isCorrect && prevState !== "won") {
-            const newStreak = streak + 1;
-            if (newStreak >= 10) {
-              vapi.stop();
-              confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-              return "won";
-            }
+          const newStreak = isCorrect ? streak + 1 : 0; // Calculate based on latest streak
+          if (isCorrect && prevState !== "won" && newStreak >= 10) {
+            vapi.stop();
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+            return "won";
           }
 
           if (totalQuestionsAsked >= 10 && prevState !== "won") {
@@ -112,7 +115,7 @@ export default function Home() {
     });
 
     return () => vapi.removeAllListeners();
-  }, [streak]);
+  }, []); // Removed `streak` from dependency array
 
   const startQuiz = async () => {
     if (gameState === "won" || gameState === "lost") {
@@ -130,16 +133,16 @@ export default function Home() {
       const shuffled = shuffleQuestions(filteredQuestions);
       const selected = shuffled.slice(0, 10);
       setShuffledQuestions(selected);
-      // console.log(
-      //   "Reset questions:",
-      //   selected.map((q) => q.question),
-      // );
+      console.log(
+        "Reset questions:",
+        selected.map((q) => q.question),
+      );
     }
     try {
-      // console.log("Sending to Vapi:", {
-      //   questions: shuffledQuestions.map((q) => q.question),
-      //   currentQuestionIndex: questionIndex,
-      // });
+      console.log("Sending to Vapi:", {
+        questions: shuffledQuestions.map((q) => q.question),
+        currentQuestionIndex: questionIndex,
+      });
       await vapi.start(process.env.NEXT_PUBLIC_ASSISTANT_ID, {
         variableValues: {
           questions: shuffledQuestions,
