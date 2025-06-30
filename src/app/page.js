@@ -64,22 +64,36 @@ export default function Home() {
           message.toolCall.arguments,
         );
         // console.log("Tool call received:", { isCorrect, totalQuestionsAsked });
-        if (isCorrect) {
-          setScore((prev) => prev + 1);
-          setStreak((prev) => prev + 1);
-          if (streak + 1 >= 10) {
-            setGameState("won");
-            vapi.stop();
-            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+
+        // Fixed scoring logic
+        setScore((prev) => {
+          const newScore = isCorrect ? prev + 1 : prev;
+          console.log("New score:", newScore); // Log after update
+          return newScore;
+        });
+        setStreak((prev) => (isCorrect ? prev + 1 : 0));
+        setStreak((prev) => (isCorrect ? prev + 1 : 0));
+
+        // Use functional update to check new streak and game state
+        setGameState((prevState) => {
+          if (isCorrect && prevState !== "won") {
+            const newStreak = streak + 1;
+            if (newStreak >= 10) {
+              vapi.stop();
+              confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+              return "won";
+            }
           }
-        } else {
-          setStreak(0);
-        }
+
+          if (totalQuestionsAsked >= 10 && prevState !== "won") {
+            vapi.stop();
+            return "lost";
+          }
+
+          return prevState;
+        });
+
         setQuestionIndex(totalQuestionsAsked);
-        if (totalQuestionsAsked >= 10 && streak < 10) {
-          setGameState("lost");
-          vapi.stop();
-        }
       }
     });
     vapi.on("call-end", () => {
@@ -117,8 +131,8 @@ export default function Home() {
       const selected = shuffled.slice(0, 10);
       setShuffledQuestions(selected);
       // console.log(
-      // "Reset questions:",
-      // selected.map((q) => q.question),
+      //   "Reset questions:",
+      //   selected.map((q) => q.question),
       // );
     }
     try {
