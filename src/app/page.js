@@ -18,6 +18,7 @@ export default function Home() {
   const [gameState, setGameState] = useState("idle"); // idle, playing, won, lost
   const [difficulty, setDifficulty] = useState("all");
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [totalQuestionsAsked, setTotalQuestionsAsked] = useState(0);
   const [shuffledQuestions, setShuffledQuestions] = useState([]);
 
   // Helper function to shuffle questions using Fisher-Yates algorithm
@@ -39,10 +40,7 @@ export default function Home() {
     const shuffled = shuffleQuestions(filteredQuestions);
     const selected = shuffled.slice(0, 10);
     setShuffledQuestions(selected);
-    console.log(
-      "Initialized questions:",
-      selected.map((q) => q.question),
-    );
+    setQuestionIndex(0); // Reset questionIndex when difficulty changes
   }, [difficulty]);
 
   useEffect(() => {
@@ -50,53 +48,70 @@ export default function Home() {
     vapi.on("speech-end", () => setIsSpeaking(false));
     vapi.on("volume-level", (volume) => setVolumeLevel(volume));
     vapi.on("message", (message) => {
-      if (message.type === "transcript" && message.transcriptType === "final") {
+      if (
+        message.type === "transcript" &&
+        message.transcriptType === "final" &&
+        message.role === "user"
+      ) {
         setTranscript((prev) => [
           ...prev,
           { role: message.role, text: message.transcript },
         ]);
       }
       if (
-        message.type === "tool-call" &&
-        message.toolCall.functionName === "update_score"
+        message.type === "transcript" &&
+        message.transcriptType === "final" &&
+        message.role === "assistant"
       ) {
-        const { isCorrect, totalQuestionsAsked } = JSON.parse(
-          message.toolCall.arguments,
-        );
-        console.log("Tool call received:", { isCorrect, totalQuestionsAsked });
+        const transcriptText = message.transcript.toLowerCase();
 
-        // Update score
-        setScore((prev) => {
-          const newScore = isCorrect ? prev + 1 : prev;
-          console.log("New score:", newScore);
-          return newScore;
-        });
-
-        // Update streak
-        setStreak((prev) => {
-          const newStreak = isCorrect ? prev + 1 : 0;
-          console.log("New streak:", newStreak);
-          return newStreak;
-        });
-
-        // Update game state using functional updates to ensure latest streak
-        setGameState((prevState) => {
-          const newStreak = isCorrect ? streak + 1 : 0; // Calculate based on latest streak
-          if (isCorrect && prevState !== "won" && newStreak >= 10) {
-            vapi.stop();
-            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-            return "won";
+        if (transcriptText.includes("correct for a")) {
+          let points = 0;
+          if (transcriptText.includes("beginner question")) {
+            points = 10;
+          } else if (transcriptText.includes("intermediate question")) {
+            points = 20;
+          } else if (transcriptText.includes("advanced question")) {
+            points = 30;
           }
 
-          if (totalQuestionsAsked >= 10 && prevState !== "won") {
-            vapi.stop();
-            return "lost";
-          }
+          const newScore = score + points;
+          const newStreak = streak + 1;
+          const updatedTotalQuestionsAsked = totalQuestionsAsked + 1;
 
-          return prevState;
-        });
+          setScore(newScore);
+          setStreak(newStreak);
+          setTotalQuestionsAsked(updatedTotalQuestionsAsked);
+          setQuestionIndex((prev) => prev + 1);
 
-        setQuestionIndex(totalQuestionsAsked);
+          setGameState((prevState) => {
+            if (newStreak >= 10 && prevState !== "won") {
+              vapi.stop();
+              confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+              return "won";
+            }
+            if (updatedTotalQuestionsAsked >= 10 && prevState !== "won") {
+              vapi.stop();
+              return "lost";
+            }
+            return prevState;
+          });
+        } else if (transcriptText.includes("incorrect for a")) {
+          const updatedTotalQuestionsAsked = totalQuestionsAsked + 1;
+
+          setStreak(0);
+          setTotalQuestionsAsked(updatedTotalQuestionsAsked);
+          setQuestionIndex((prev) => prev + 1);
+
+          setGameState((prevState) => {
+            if (updatedTotalQuestionsAsked >= 10 && prevState !== "won") {
+              vapi.stop();
+              return "lost";
+            }
+            return prevState;
+          });
+        }
+        // Fallback for unexpected feedback: do nothing to prevent score changes
       }
     });
     vapi.on("call-end", () => {
@@ -104,18 +119,12 @@ export default function Home() {
       setIsSpeaking(false);
     });
     vapi.on("error", (e) => {
-      console.error("Vapi error:", {
-        message: e.message,
-        status: e.status,
-        response: e.response?.data,
-        stack: e.stack,
-      });
       setIsCallActive(false);
       setGameState("idle");
     });
 
     return () => vapi.removeAllListeners();
-  }, []); // Removed `streak` from dependency array
+  }, [score, streak, totalQuestionsAsked, questionIndex, shuffledQuestions]);
 
   const startQuiz = async () => {
     if (gameState === "won" || gameState === "lost") {
@@ -123,6 +132,7 @@ export default function Home() {
       setScore(0);
       setStreak(0);
       setQuestionIndex(0);
+      setTotalQuestionsAsked(0);
       setTranscript([]);
       setGameState("playing");
       // Reshuffle questions
@@ -133,16 +143,8 @@ export default function Home() {
       const shuffled = shuffleQuestions(filteredQuestions);
       const selected = shuffled.slice(0, 10);
       setShuffledQuestions(selected);
-      console.log(
-        "Reset questions:",
-        selected.map((q) => q.question),
-      );
     }
     try {
-      console.log("Sending to Vapi:", {
-        questions: shuffledQuestions.map((q) => q.question),
-        currentQuestionIndex: questionIndex,
-      });
       await vapi.start(process.env.NEXT_PUBLIC_ASSISTANT_ID, {
         variableValues: {
           questions: shuffledQuestions,
@@ -153,12 +155,6 @@ export default function Home() {
       setIsCallActive(true);
       setGameState("playing");
     } catch (error) {
-      console.error("Failed to start quiz:", {
-        message: error.message,
-        status: error.status,
-        response: error.response?.data,
-        stack: error.stack,
-      });
       setIsCallActive(false);
       setGameState("idle");
     }
@@ -195,7 +191,12 @@ export default function Home() {
         stopQuiz={stopQuiz}
         gameState={gameState}
       />
-      <TranscriptOverlay score={score} streak={streak} gameState={gameState} />
+      <TranscriptOverlay
+        key={`${score}-${streak}`}
+        score={score}
+        streak={streak}
+        gameState={gameState}
+      />
     </div>
   );
 }
